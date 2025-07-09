@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -52,6 +52,7 @@
     <h2>About Us</h2>
     <p>StarSeven is an India-based brand specializing in high-quality engine coolants and automotive filters. We blend technical precision with reliability, ensuring performance under all weather and road conditions.</p>
   </div>
+[MSDS_StarSeven_Coolant_2024.pdf](https://github.com/user-attachments/files/21149570/MSDS_StarSeven_Coolant_2024.pdf)
 
   <div class="section">
     <h2>Our Products</h2>
