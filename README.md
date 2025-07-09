@@ -18,6 +18,11 @@
       padding: 20px;
       text-align: center;
     }
+    header img {
+      max-width: 120px;
+      display: block;
+      margin: 0 auto 10px;
+    }
     .section {
       padding: 40px;
       max-width: 1000px;
@@ -44,15 +49,15 @@
 </head>
 <body>
   <header>
-    <h1>StarSeven Automotive</h1>
+    <img src="0273b273-fdfe-44d8-964b-7d28f358fcb4.JPG" alt="StarSeven Logo" />
+    <h1>StarSeven Automotive<sup>&#8482;</sup></h1>
     <p>Premium Filters & Engine Coolants – Trusted by Mechanics</p>
   </header>
 
   <div class="section">
     <h2>About Us</h2>
-    <p>StarSeven is an India-based brand specializing in high-quality engine coolants and automotive filters. We blend technical precision with reliability, ensuring performance under all weather and road conditions.</p>
+    <p>StarSeven<sup>&#8482;</sup> is an India-based brand specializing in high-quality engine coolants and automotive filters. We blend technical precision with reliability, ensuring performance under all weather and road conditions.</p>
   </div>
-[MSDS_StarSeven_Coolant_2024.pdf](https://github.com/user-attachments/files/21149570/MSDS_StarSeven_Coolant_2024.pdf)
 
   <div class="section">
     <h2>Our Products</h2>
@@ -68,6 +73,7 @@
       <p>OE-grade filtration solutions for various 2W and 4W vehicles, designed for performance, durability, and mechanic satisfaction.</p>
     </div>
   </div>
+[MSDS_StarSeven_Coolant_2024.pdf](https://github.com/user-attachments/files/21149633/MSDS_StarSeven_Coolant_2024.pdf)
 
   <div class="section">
     <h2>Contact Us</h2>
@@ -78,7 +84,7 @@
   </div>
 
   <footer>
-    &copy; 2024 StarSeven Automobiles India. All rights reserved.
+    &copy; 2024 StarSeven<sup>&#8482;</sup> Automobiles India. All rights reserved.
   </footer>
 </body>
 </html>
