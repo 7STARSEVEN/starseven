@@ -1,0 +1,50 @@
+keyword,group
+# ---------------------------------------------------------------------------
+# Edit this file in Excel or Notepad. One rule per line: keyword,group
+# - The keyword is looked for in the transaction Particulars (case does not matter).
+# - It matches WHOLE words: "RANE" matches "RANE MADRAS LTD" but not "SRANE" or "RANEX".
+#   Put * at the end to match the start of a word: "SAMKRG*" also matches "SAMKRGPISTONS".
+# - Rules are checked top to bottom; the FIRST match wins. Put specific names first.
+# - Lines starting with # are ignored.
+# - Special groups the report treats separately:
+#     Owner transfer   - money to/from the owner (not counted as a supplier payment or collection)
+#     Loan/Drawdown    - loan, OD/drawdown, EMI and interest debits
+#     Bank charges     - charges, GST on charges, SMS fees
+#     Cash withdrawal  - self cheques / ATM cash
+#   Any other group name you type becomes its own payee group in the report.
+# ---------------------------------------------------------------------------
+SAMKRG*,SAM
+SAM KRG,SAM
+MACO,MACO
+RANE,Rane
+MITSUBOSHI*,Mitsuboshi
+JAI AUTO,Jai Auto
+JAIAUTO*,Jai Auto
+H M INDUSTRIES,H M Industries
+HM INDUSTRIES,H M Industries
+H M IND,H M Industries
+HMIND*,H M Industries
+# --- Owner: replace the example below with the owner's name(s) / own other accounts ---
+# OWNER NAME,Owner transfer
+# --- Loans / drawdown ---
+LOAN*,Loan/Drawdown
+DRAWDOWN*,Loan/Drawdown
+DRAW DOWN,Loan/Drawdown
+EMI,Loan/Drawdown
+INTEREST,Loan/Drawdown
+INT COLL,Loan/Drawdown
+# --- Bank charges ---
+CHARGE*,Bank charges
+CHRG*,Bank charges
+CHG*,Bank charges
+SMS,Bank charges
+GST,Bank charges
+COMMISSION*,Bank charges
+AMC,Bank charges
+FOLIO,Bank charges
+MIN BAL,Bank charges
+# --- Cash withdrawals ---
+SELF,Cash withdrawal
+CASH WDL,Cash withdrawal
+CASH WITHDRAWAL,Cash withdrawal
+ATM,Cash withdrawal

@@ -1,0 +1,6 @@
+# bank statements and reports stay on your PC - never commit them
+pdfs/*
+!pdfs/README.txt
+output/
+wheels/
+__pycache__/
