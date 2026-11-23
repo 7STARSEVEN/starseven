@@ -31,6 +31,7 @@ from datetime import date, datetime
 LARGE_PAYMENT_LIMIT = 200000.00   # flag payments above this to anyone except SAM (Rs)
 DUPLICATE_WINDOW_DAYS = 7          # same amount to two parties within this many days
 DUPLICATE_MIN_AMOUNT = 1000.00     # ignore small identical amounts (Rs)
+NO_REPEAT_FLAG = {"SAM", "Owner transfer", "Cash withdrawal"}  # regular repeat payees: no double-payment flag
 COMPARE_MONTHS = 3                 # months in the comparison table
 OWN_NAME_WORDS = {"PISTON", "AGENCY", "AGENCIES"}  # our own name, ignored when guessing the other party
 
@@ -45,7 +46,7 @@ OTHERS = "Others"
 SUPPLIER_ORDER = [SAM, "MACO", "Rane", "Mitsuboshi", "Jai Auto", "H M Industries"]
 SPECIAL_ORDER = [OWNER, LOAN, CHARGES, CASH_WDL, CHQ_RETURN]
 
-MODES = ["UPI", "NEFT/RTGS", "IMPS", "Cheque clearing", "Cash deposit", "Other"]
+MODES = ["UPI", "NEFT/RTGS", "IMPS", "Cheque clearing", "Cash deposit", "Canara transfer", "Other"]
 WEEKS = ["Week 1 (1-7)", "Week 2 (8-14)", "Week 3 (15-21)", "Week 4 (22-28)", "Week 5 (29-31)"]
 
 # ----------------------------------------------------------------------------
@@ -62,11 +63,28 @@ RE_CRDR = re.compile(r"^\(?(Cr|Dr|CR|DR|cr|dr)\)?\.?$")
 RE_FOOTER = re.compile(
     r"PAGE\s*\d+\s*(OF|/)\s*\d+|COMPUTER GENERATED|DOES NOT REQUIRE|SIGNATURE|"
     r"UNLESS THE CONSTITUENT|TOLL FREE|WWW\.|CUSTOMER CARE|STATEMENT GENERATED|"
-    r"END OF STATEMENT|\*\*\*", re.I)
+    r"END OF STATEMENT|\*\*\*|^\s*PAGE\s*\d+\s*$", re.I)
 RE_OPENING = re.compile(r"OPENING\s*BAL|BALANCE\s*B\s*/?\s*F|BROUGHT\s*FORWARD|^\s*B\s*/\s*F\b", re.I)
 RE_CLOSING = re.compile(r"CLOSING\s*BAL|BALANCE\s*C\s*/?\s*F|CARRIED\s*FORWARD|^\s*C\s*/\s*F\b", re.I)
 RE_RETURN = re.compile(r"\b(RTN|RETURN|RETURNED|RET|DISHONOU?R(ED)?|BOUNCED?|UNPAID|INWARD RET|OUTWARD RET)\b")
 RE_EPAY = re.compile(r"\b(UPI|IMPS|NEFT|RTGS)\b")
+RE_CHQ_CTX = re.compile(r"\b(CHQ|CHEQUE|CLG|CTS|GEFU|INWARD|OUTWARD|OW|IW|ECS|NACH|MICR)\b")
+RE_EPAY_RETURN = re.compile(r"\b(NEFT|RTGS|IMPS|UPI)\s*(RETURN|RTN|RET|REVERSAL|REV|REFUND)\b")
+# Canara narration formats: pull out the other party's name
+PARTY_PATTERNS = [re.compile(p) for p in [
+    r"NEFT DR\s+CNRBH\d+\s+(.+?)\s+[A-Z]{4}0[A-Z0-9]{6}\b",
+    r"NEFT DR-\s*CNRBH\d+-\s*[A-Z]{4}0[A-Z0-9]{6}-\s*([^-]+)",
+    r"NEFT CR-\s*\S+?-\s*[A-Z]{4}0[A-Z0-9]{6}-\s*([^-]+)",
+    r"NEFT RETURN-\S+-\s*([^-]+)",
+    r"RTGS (?:DR|CR)-\s*\S+?-\s*(?:[A-Z]{4}0[A-Z0-9]{6}-\s*)?([^-]+)",
+    r"IMPS-(?:DR|CR)/([^/]+)/",
+    r"IMPS\s*-?\s*CR/([^/]+)/",
+    r"UPI/(?:DR|CR)/\d+/([^/]+)/",
+    r"MB/\d+/PISTON AGENCY/\d+/([^/]+)/",
+    r"CASH DEPOSIT(?: BY)?\s+(.+)",
+    r"FUNDS TRANSFER (?:DEBIT|CREDIT)\s*[\d ]*-\s*(.+)",
+    r"BY CLG:\S+ CLG SEC-?\s*[^,]+,\s*(.+)",
+]]
 RE_IFSC = re.compile(r"^[A-Z]{4}0[A-Z0-9]{6}$")
 
 
@@ -146,11 +164,17 @@ class Txn:
     category: str = ""     # collection mode / non-collection type / payment group
     is_collection: bool = False
     is_return: bool = False
+    ret_type: str = ""
     party: str = ""
+    book_date: date = None   # date used for month/week; differs only for back-dated rows
+
+    @property
+    def bdate(self):
+        return self.book_date or self.date
 
     @property
     def month(self):
-        return (self.date.year, self.date.month)
+        return (self.bdate.year, self.bdate.month)
 
 
 @dataclass
@@ -210,6 +234,7 @@ def find_header(lines):
                 c = (w["x0"] + w["x1"]) / 2
                 if t.startswith("DATE") and "date" not in cols:
                     cols["date"] = w
+                    cols["date_x1"] = w["x1"]
                 elif re.match(r"PARTICULARS|DESCRIPTION|NARRATION|DETAILS", t):
                     cols["part_x0"] = w["x0"]
                 elif t.startswith("DEPOSIT") or t.startswith("CREDIT"):
@@ -278,12 +303,15 @@ def read_pdf(path, password=None, dump=False):
                             res.opening = -abs(ms[-1][0]) if dr else ms[-1][0]
                             res.opening_source = "printed"
             content = [ln for ln in lines if hb is None or ln["top"] > hb + 0.5]
+            # dates must start left of this x (particulars may start left of their heading)
+            date_zone = (part_x0 - 3) if part_x0 else pw * 0.22
+            if cols and cols.get("date_x1"):
+                date_zone = min(date_zone, cols["date_x1"] + 30)
             plines = []
             for ln in content:
                 ws = ln["words"]
                 first = ws[0]
                 d = parse_date(first["text"])
-                date_zone = (part_x0 - 3) if part_x0 else pw * 0.22
                 is_anchor = d is not None and first["x0"] < date_zone
                 money, text = [], []
                 for i, w in enumerate(ws):
@@ -297,7 +325,7 @@ def read_pdf(path, password=None, dump=False):
                         money[-1][1] = RE_CRDR.match(w["text"]).group(1).upper()
                         continue
                     if is_anchor and (RE_TIME.match(w["text"]) or
-                                      (parse_date(w["text"]) and (not part_x0 or w["x0"] < part_x0 - 3))):
+                                      (parse_date(w["text"]) and w["x0"] < date_zone + 25)):
                         continue   # value date / time column
                     text.append(w["text"])
                 kind = "text"
@@ -309,7 +337,9 @@ def read_pdf(path, password=None, dump=False):
                     kind = "closing"
                 elif RE_FOOTER.search(ln["text"]):
                     kind = "stop"
-                elif first["x0"] < ((part_x0 - 3) if part_x0 else -1) and not money:
+                elif re.match(r"CHQ\b", ln["text"], re.I):
+                    kind = "chq"      # Canara e-passbook: every row ends with a "Chq: <no>" line
+                elif first["x0"] < (date_zone if part_x0 else -1) and not money:
                     kind = "stop"     # text starting in the date column = not part of the table
                 plines.append({"kind": kind, "date": d, "text": " ".join(text), "money": money,
                                "mid": ln["mid"], "top": ln["top"], "page": pno})
@@ -328,6 +358,10 @@ def read_pdf(path, password=None, dump=False):
 
 def assemble_rows(pages, res):
     """Attach particulars lines to their date row (handles top-aligned, centred and ruled tables)."""
+    n_chq = sum(l["kind"] == "chq" for pg in pages for l in pg["lines"])
+    n_anchor = sum(l["kind"] == "anchor" for pg in pages for l in pg["lines"])
+    if n_anchor and n_chq >= 0.5 * n_anchor:
+        return assemble_chq_rows(pages, res)
     # Decide layout: centred cells put lines above the date.
     centred = False
     for pg in pages:
@@ -436,6 +470,53 @@ def assemble_rows(pages, res):
             pr["row"].text = " ".join(t for _, t in pr["parts"]).strip()
             rows.append(pr)
     return [pr["row"] for pr in rows]
+
+
+def assemble_chq_rows(pages, res):
+    """Canara e-passbook layout: a row is every line from one 'Chq:' line to the next,
+    with the date and amounts on one of the middle lines. Works across page breaks."""
+    rows, pending, cur = [], [], None
+    for pg in pages:
+        for l in pg["lines"]:
+            k = l["kind"]
+            if k == "opening" and res.opening is None:
+                m = l["money"][-1]
+                res.opening = -abs(m[0]) if m[1] == "DR" else m[0]
+                res.opening_source = "printed"
+            elif k == "closing":
+                m = l["money"][-1]
+                res.closing_printed = -abs(m[0]) if m[1] == "DR" else m[0]
+            elif k == "anchor":
+                if cur is not None:          # two dates without a Chq line between them
+                    rows.append(cur)
+                cur = {"row": Row(l["date"], "", list(l["money"]), l["page"], res.file),
+                       "parts": [p["text"] for p in pending if p["text"]] + ([l["text"]] if l["text"] else [])}
+                pending = []
+            elif k == "text":
+                if cur is not None:
+                    cur["parts"].append(l["text"])
+                    if l["money"] and not cur["row"].money:
+                        cur["row"].money = list(l["money"])
+                else:
+                    pending.append(l)
+            elif k == "chq":
+                if cur is not None:
+                    no = re.sub(r"(?i)^chq\s*:?\s*", "", l["text"]).strip()
+                    if no and no.strip("0") and len(no) <= 6:
+                        cur["parts"].append(f"Chq {no}")
+                    rows.append(cur)
+                elif pending and rows:       # tail of a row split by a page break
+                    rows[-1]["parts"] += [p["text"] for p in pending if p["text"]]
+                cur, pending = None, []
+            elif k in ("stop",):
+                pass                          # page footer/header: ignore, row may continue
+    if cur is not None:
+        rows.append(cur)
+    out = []
+    for r in rows:
+        r["row"].text = " ".join(p for p in r["parts"] if p).strip()
+        out.append(r["row"])
+    return out
 
 
 def split_point(seg, above_prev):
@@ -565,12 +646,21 @@ def pay_mode(text):
         return "Cheque clearing"
     if re.search(r" (CASH|CDM|BNA|BY CASH|CSH) ", u):
         return "Cash deposit"
+    if re.search(r" (FUNDS TRANSFER|FUND TRANSFER|TRANSFER FROM|BY TRANSFER|IFT) ", u):
+        return "Canara transfer"
     return "Other"
 
 
 def counterparty(text):
     """Best guess at the other party's name from the narration."""
     up = text.upper()
+    for pat in PARTY_PATTERNS:
+        m = pat.search(up)
+        if m:
+            name = re.sub(r"\s+", " ", m.group(1)).strip(" -/.,")
+            name = re.sub(r"\s*\b(NGP CEN AVEN|CHQ \d+)$", "", name)
+            if re.search(r"[A-Z]{3}", name):
+                return name[:40]
     parts = re.split(r"[/\-:|]+|\s{2,}", up)
     skip = {"UPI", "CR", "DR", "NEFT", "RTGS", "IMPS", "P2A", "P2P", "P2M", "MOB", "CHQ", "CLG", "CTS", "BY",
             "TO", "TRANSFER", "TRF", "PAYMENT", "PAY", "PAID", "FROM", "INB", "MB", "NA", "IFT", "CHEQUE", "MICR",
@@ -597,11 +687,18 @@ def classify(t, rules):
     t.mode = pay_mode(t.particulars)
     t.group = match_group(t.particulars, rules)
     u = norm(t.particulars)
-    t.is_return = bool(RE_RETURN.search(u)) and not RE_EPAY.search(u)
+    up = t.particulars.upper()
+    if RE_RETURN.search(u) and RE_CHQ_CTX.search(u):
+        t.ret_type = "Cheque return"
+    elif t.kind == "CR" and RE_EPAY_RETURN.search(up):
+        t.ret_type = "Payment returned"          # e.g. NEFT RETURN - our payment bounced back
+    t.is_return = bool(t.ret_type)
     t.party = counterparty(t.particulars)
     if t.kind == "CR":
-        if t.is_return:
+        if t.ret_type == "Cheque return":
             t.category = "Cheque return (credited back)"
+        elif t.ret_type:
+            t.category = "Payment returned (credited back)"
         elif t.group == OWNER:
             t.category = "Owner funds in"
         elif t.group == LOAN:
@@ -630,7 +727,7 @@ def week_of(d):
 def party_key(t):
     if t.category not in (OTHERS, ""):
         return t.category
-    return "?" + (t.party or t.particulars[:25]).upper()
+    return "?" + re.sub(r"[^A-Z0-9]", "", (t.party or t.particulars[:25]).upper())
 
 
 def find_flags(txns):
@@ -645,9 +742,17 @@ def find_flags(txns):
                               "amount": b.amount,
                               "detail": f"{a.date:%d-%m} {short_party(a)}  AND  {b.date:%d-%m} {short_party(b)}"
                                         " - possible wrong payment, please check"})
+    for i, a in enumerate(pays):
+        for b in pays[i + 1:]:
+            if b.amount == a.amount and abs((b.date - a.date).days) <= DUPLICATE_WINDOW_DAYS \
+                    and party_key(a) == party_key(b) and a.category not in NO_REPEAT_FLAG:
+                flags.append({"month": b.month, "type": "Same amount, same party", "date": b.date,
+                              "amount": b.amount,
+                              "detail": f"{a.date:%d-%m} and {b.date:%d-%m} to {short_party(b)}"
+                                        " - possible double payment, please check"})
     for t in txns:
         if t.is_return:
-            flags.append({"month": t.month, "type": "Cheque return", "date": t.date, "amount": t.amount,
+            flags.append({"month": t.month, "type": t.ret_type, "date": t.date, "amount": t.amount,
                           "detail": f"{'Credit' if t.kind == 'CR' else 'Debit'}: {t.particulars[:90]}"})
     for t in txns:
         if t.kind == "DR" and t.category != SAM and t.amount > LARGE_PAYMENT_LIMIT * 100:
@@ -678,8 +783,8 @@ def payment_groups(txns):
 def month_stats(txns, mkey, flags, groups):
     mt = [t for t in txns if t.month == mkey]
     s = {"key": mkey, "txns": mt}
-    s["first"] = min(t.date for t in mt)
-    s["last"] = max(t.date for t in mt)
+    s["first"] = min(t.bdate for t in mt)
+    s["last"] = max(t.bdate for t in mt)
     f0 = mt[0]
     s["opening"] = f0.balance - f0.amount if f0.kind == "CR" else f0.balance + f0.amount
     s["closing"] = mt[-1].balance
@@ -688,8 +793,8 @@ def month_stats(txns, mkey, flags, groups):
     s["coll_count"] = len(cols)
     s["by_mode"] = {m: sum(t.amount for t in cols if t.category == m) for m in MODES}
     s["mode_count"] = {m: sum(1 for t in cols if t.category == m) for m in MODES}
-    s["by_week"] = {w: sum(t.amount for t in cols if week_of(t.date) == w) for w in WEEKS}
-    s["week_mode"] = {w: {m: sum(t.amount for t in cols if week_of(t.date) == w and t.category == m)
+    s["by_week"] = {w: sum(t.amount for t in cols if week_of(t.bdate) == w) for w in WEEKS}
+    s["week_mode"] = {w: {m: sum(t.amount for t in cols if week_of(t.bdate) == w and t.category == m)
                           for m in MODES} for w in WEEKS}
     other_cr = defaultdict(int)
     for t in mt:
@@ -925,7 +1030,8 @@ def write_excel(path, months, cmp_months, txns, flags, files, groups, rules_path
     # ---------------- Transactions ----------------
     ws = wb.create_sheet("Transactions")
     header(ws, 1, ["Date", "Particulars", "Deposit", "Withdrawal", "Balance", "Mode", "Category / payee group",
-                   "Collection?", "Other party (guess)", "Week", "Balance check", "File", "Page"])
+                   "Collection?", "Other party (guess)", "Week", "Balance check", "File", "Page",
+                   "Counted on (back-dated rows)"])
     for i, t in enumerate(txns, 2):
         put(ws, i, 1, t.date).number_format = "DD-MM-YYYY"
         put(ws, i, 2, t.particulars)
@@ -936,27 +1042,33 @@ def write_excel(path, months, cmp_months, txns, flags, files, groups, rules_path
         put(ws, i, 7, t.category)
         put(ws, i, 8, "Yes" if t.is_collection else "")
         put(ws, i, 9, t.party)
-        put(ws, i, 10, week_of(t.date))
+        put(ws, i, 10, week_of(t.bdate))
         put(ws, i, 11, t.check, fill=None if t.check.startswith("OK") else flag_fill)
         put(ws, i, 12, t.file)
         put(ws, i, 13, t.page)
-    widths(ws, [11, 70, 14, 14, 15, 15, 24, 11, 28, 15, 14, 26, 6])
+        c = put(ws, i, 14, t.book_date)
+        if t.book_date:
+            c.number_format = "DD-MM-YYYY"
+    widths(ws, [11, 70, 14, 14, 15, 15, 24, 11, 28, 15, 14, 26, 6, 14])
     ws.freeze_panes = "B2"
-    ws.auto_filter.ref = f"A1:M{len(txns) + 1}"
+    ws.auto_filter.ref = f"A1:N{len(txns) + 1}"
 
     # ---------------- Unmapped payees ----------------
     ws = wb.create_sheet("Unmapped payees")
     ws["A1"] = "Payments that fell into 'Others'. Add a keyword for any of these to payees.csv and run again."
     ws["A1"].font = bold
-    agg = defaultdict(lambda: [0, 0, None])
+    agg = defaultdict(lambda: [0, 0, None, None])
     for t in txns:
         if t.kind == "DR" and t.category == OTHERS:
-            k = t.party or t.particulars[:40]
-            agg[k][0] += 1
-            agg[k][1] += t.amount
-            agg[k][2] = agg[k][2] or t.particulars
+            name = t.party or t.particulars[:40]
+            a_ = agg[re.sub(r"[^A-Z0-9]", "", name.upper())]   # 'NARAN G MOTORS' = 'NARANG MOTORS'
+            a_[0] += 1
+            a_[1] += t.amount
+            a_[2] = a_[2] or t.particulars
+            if a_[3] is None or len(name.split()) < len(a_[3].split()):
+                a_[3] = name
     header(ws, 3, ["Other party (guess)", "No.", "Total", "Example particulars", "Suggested payees.csv line"])
-    for i, (k, (n, v, ex)) in enumerate(sorted(agg.items(), key=lambda x: -x[1][1]), 4):
+    for i, (n, v, ex, k) in enumerate(sorted(agg.values(), key=lambda x: -x[1]), 4):
         put(ws, i, 1, k)
         put(ws, i, 2, n)
         put(ws, i, 3, v, money=True)
@@ -1127,6 +1239,14 @@ def main():
             exp = prev.balance + (t.amount if t.kind == "CR" else -t.amount)
             if exp != t.balance:
                 t.check = f"MISMATCH (gap between files: {prev.file} ends {inr(prev.balance)})"
+
+    # Canara cuts statements by posting date; a row printed with an earlier date than the row
+    # before it (e.g. 30-09 after 01-10) is counted on the latest date seen so far.
+    latest = None
+    for t in txns:
+        latest = t.date if latest is None or t.date > latest else latest
+        if latest != t.date:
+            t.book_date = latest
 
     rules = load_payees(a.payees)
     for t in txns:

@@ -24,16 +24,23 @@ H M INDUSTRIES,H M Industries
 HM INDUSTRIES,H M Industries
 H M IND,H M Industries
 HMIND*,H M Industries
-# --- Owner: replace the example below with the owner's name(s) / own other accounts ---
-# OWNER NAME,Owner transfer
-# --- Loans / drawdown ---
+# --- Loans / drawdown (kept above the owner rules: drawdown lines also carry the owner's name) ---
 LOAN*,Loan/Drawdown
 DRAWDOWN*,Loan/Drawdown
 DRAW DOWN,Loan/Drawdown
 EMI,Loan/Drawdown
 INTEREST,Loan/Drawdown
 INT COLL,Loan/Drawdown
+# --- Owner: names and the owner's own account number(s) ---
+# OWNER NAME,Owner transfer
+# OWNER ACCOUNT NUMBER,Owner transfer
 # --- Bank charges ---
+SC NEFT,Bank charges
+NEFT SC,Bank charges
+IMPS SC,Bank charges
+RTGS SC,Bank charges
+UPI SC,Bank charges
+ISS OUTSN,Bank charges
 CHARGE*,Bank charges
 CHRG*,Bank charges
 CHG*,Bank charges
