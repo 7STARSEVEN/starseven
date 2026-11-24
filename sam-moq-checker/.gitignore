@@ -1,0 +1,13 @@
+# reports, personal state and SAM / Tally data files - never commit these
+*_CHECK*.xlsx
+SAM_Order_Tracker*.xlsx
+.last_folder
+Pending/*.xls*
+Orders Sent/*.xls*
+SAM Bills/*.xls*
+Stock/*.xls*
+__pycache__/
+
+# SAM scheme terms and code list - kept only on the office PC / in the zip
+moq.csv
+rates.csv

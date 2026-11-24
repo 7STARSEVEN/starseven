@@ -1,0 +1,2 @@
+Put SAM's latest pending-orders Excel file in this folder.
+The checker always uses the NEWEST file here. Old files can stay or be deleted.
