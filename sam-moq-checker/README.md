@@ -15,8 +15,8 @@ The tool only **reads** your files. It never changes them.
 
 1. Install **Python** from python.org. On the first screen **tick "Add python.exe to PATH"**, then *Install Now*.
 2. Unzip `SAM_MOQ_Checker.zip` onto the **Desktop**, so you have `Desktop\SAM_MOQ_Checker\`.
-3. Open the `Desktop shortcuts` folder inside it and copy **`Check SAM Order.bat`** and
-   **`Update SAM Tracker.bat`** onto the Desktop (next to the `SAM_MOQ_Checker` folder).
+3. Right-click **`Check_SAM_Order.bat`** → *Send to* → *Desktop (create shortcut)*. Do the same for
+   **`Update_SAM_Tracker.bat`**. Rename the shortcuts "Check SAM Order" and "Update SAM Tracker".
 4. Double-click **Check SAM Order** once **with internet on** – the first time it installs two free
    free readers (`openpyxl`, `xlrd` for Excel, `pypdf` for SAM's PDF bills). After that no internet is needed.
    If Windows says "Windows protected your PC": *More info* → *Run anyway*.
@@ -28,7 +28,7 @@ The tool only **reads** your files. It never changes them.
 | `Pending` | SAM's pending-orders list (Excel) | Every time SAM sends a new one |
 | `Orders Sent` | A copy of **every PO you send** to SAM. **Date in the file name**, e.g. `SAM_PO_23.11.2026.xls` | Every order |
 | `SAM Bills` | Every SAM bill / tax invoice – the **PDF as SAM sends it** (Excel also works) | Every bill |
-| `Stock` | *(only if `stock_check = yes`)* Tally **Stock Summary** exported to Excel (with Opening / Inwards / Outwards / Closing columns and the period at the top) | Every week |
+| `Stock` | *(only if `stock_check = yes` – create this folder then)* Tally **Stock Summary** exported to Excel (with Opening / Inwards / Outwards / Closing columns and the period at the top) | Every week |
 
 The newest file is used in `Pending` and `Stock`. In `Orders Sent` and `SAM Bills` every file is used.
 

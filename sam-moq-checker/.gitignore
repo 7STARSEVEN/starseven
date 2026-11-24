@@ -8,6 +8,3 @@ SAM Bills/*.xls*
 Stock/*.xls*
 __pycache__/
 
-# SAM scheme terms and code list - kept only on the office PC / in the zip
-moq.csv
-rates.csv
